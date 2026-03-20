@@ -72,7 +72,7 @@
             // Distribución 3D
             const x = x2d * Math.sin(phi);
             const y = y2d * Math.sin(phi);
-            const z = x2d * Math.cos(phi) * 0.5;
+            const z = x2d * Math.cos(phi) * 1.5;
 
             puntos.push({ x, y, z });
         }
@@ -82,7 +82,7 @@
             ctx.fillRect(0, 0, width, height);
 
             if (!isMoving) {
-                rotY += 0.008; // Giro automático suave
+                rotY += 0.100; // Giro automático suave
             } else {
                 rotY += (mouseX - pMouseX) * 0.01;
                 rotX += (mouseY - pMouseY) * 0.01;
