@@ -1,1 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corazón 3D Te Amo ❤️</title>
+    <style>
+        /* CSS para centrar el canvas y poner fondo negro */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: black; /* Fondo negro como en la imagen */
+            overflow: hidden; /* Evita barras de desplazamiento */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+        }
 
+        /* Estilos para el lienzo donde dibujaremos */
+        canvas {
+            display: block;
+        }
+
+        /* Un pequeño texto de instrucción opcional */
+        #instrucciones {
+            position: absolute;
+            bottom: 20px;
+            font-size: 14px;
+            opacity: 0.7;
+            pointer-events: none; /* No interfiere con clics */
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="heartCanvas"></canvas>
+    
+    <div id="instrucciones">Toca o usa el mouse para girar</div>
+
+    <script>
+        // --- CONFIGURACIÓN ---
+        const textoParaDibujar = "te amo"; // El texto que formará el corazón
+        const colorTexto = "#FF69B4"; // Rosa fuerte (HotPink) como en la imagen
+        const cantidadPalabras = 350; // Cuántas palabras forman el corazón (más = más denso)
+        const tamañoFuente = 14; // Tamaño de la letra
+        const velocidadRotacionBase = 0.005; // Velocidad de giro automático
+
+        // --- INICIALIZACIÓN DEL CANVAS ---
+        const canvas = document.getElementById('heartCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let pMouseX = 0, pMouseY = 0;
+        let rotacionX = 0, rotacionY = 0;
+        let estaTocando = false;
+
+        // Ajustar el canvas al tamaño de la ventana
+        function ajustarTamaño() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            ctx.font = `${tamañoFuente}px Arial, sans-serif`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+        }
+        window.addEventListener('resize', ajustarTamaño);
+        ajustarTamaño();
+
+        // --- MATEMÁTICAS DEL CORAZÓN 3D ---
+        // Generar puntos 3D en la superficie de un corazón
+        const puntos = [];
+        for (let i = 0; i < cantidadPalabras; i++) {
+            // Ecuación paramétrica de una superficie de corazón (aproximada para 3D)
+            const t = Math.PI * 2 * (i / cantidadPalabras);
+            const phi = Math.acos(2 * Math.random() - 1);
+            
+            // Fórmula base del corazón 2D
+            const x2d = 16 * Math.pow(Math.sin(t), 3);
+            const y2d = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+
+            // Extruir a 3D usando coordenadas esféricas para distribuir
+            const x = x2d * Math.sin(phi);
+            const y = y2d * Math.sin(phi);
+            const z = x2d * Math.cos(phi) * 0.6; // Comprimir en Z para que no sea una esfera
+
+            puntos.push({ x, y, z });
+        }
+
+        // --- LÓGICA DE ROTACIÓN Y DIBUJO ---
+        function proyectarYDibujar(punto, rotX, rotY) {
+            // 1. Rotación en Y (girar izquierda/derecha)
+            let x1 = punto.x * Math.cos(rotY) + punto.z * Math.sin(rotY);
+            let z1 = -punto.x * Math.sin(rotY) + punto.z * Math.cos(rotY);
+            
+            // 2. Rotación en X (girar arriba/abajo)
+            let y1 = punto.y * Math.cos(rotX) - z1 * Math.sin(rotX);
+            let z2 = punto.y * Math.sin(rotX) + z1 * Math.cos(rotX);
+
+            // 3. Proyección de perspectiva (hacer que parezca 3D)
+            const perspectiva = 400; // Distancia de la cámara
+            const factorEscala = perspectiva / (perspectiva + z2 + 20); // El '+20' es para que no se pegue a la cámara
+            
+            const xProyectado = x1 * factorEscala * 10 + width / 2; // '*10' para tamaño, '+width/2' para centrar
+            const yProyectado = -y1 * factorEscala * 10 + height / 2; // '-y1' porque el canvas tiene Y hacia abajo
+
+            // 4. Dibujar el texto
+            // Efecto de profundidad: palabras más lejanas (z2 positivo) son más oscuras
+            const opacidad = Math.max(0.1, 1 - (z2 + 15) / 30); 
+            ctx.fillStyle = colorTexto;
+            ctx.globalAlpha = opacidad; // Aplicar opacidad para profundidad
+            
+            ctx.fillText(textoParaDibujar, xProyectado, yProyectado);
+            ctx.globalAlpha = 1; // Resetear opacidad
+        }
+
+        // --- BUCLE DE ANIMACIÓN ---
+        function animar() {
+            // Limpiar el canvas en cada frame
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, width, height);
+
+            // Actualizar rotaciones
+            if (!estaTocando) {
+                rotacionY += velocidadRotacionBase; // Giro automático
+                rotacionX *= 0.95; // Desacelerar rotación en X si no se toca
+            } else {
+                // Rotación controlada por el usuario
+                rotacionY += (mouseX - pMouseX) * 0.01;
+                rotacionX += (mouseY - pMouseY) * 0.01;
+            }
+            
+            // Guardar posición anterior del mouse
+            pMouseX = mouseX;
+            pMouseY = mouseY;
+
+            // Ordenar puntos por profundidad (Z) para dibujar los de atrás primero
+            // Esto es crucial para un efecto 3D correcto
+            const puntosOrdenados = puntos.map(p => {
+                // Re-calcular Z proyectada solo para ordenar
+                const z1 = -p.x * Math.sin(rotacionY) + p.z * Math.cos(rotacionY);
+                const z2 = p.y * Math.sin(rotacionX) + z1 * Math.cos(rotacionX);
+                return { punto: p, zProyectada: z2 };
+            });
+            puntosOrdenados.sort((a, b) => b.zProyectada - a.zProyectada); // Ordenar de atrás hacia adelante
+
+            // Dibujar cada punto ordenado
+            puntosOrdenados.forEach(item => {
+                proyectarYDibujar(item.punto, rotacionX, rotacionY);
+            });
+
+            requestAnimationFrame(animar);
+        }
+
+        // --- INTERACCIÓN (MOUSE Y TOQUE) ---
+        function obtenerPosicion(e) {
+            if (e.touches && e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            } else {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }
+        }
+
+        // Eventos de Mouse
+        window.addEventListener('mousedown', (e) => { estaTocando = true; obtenerPosicion(e); pMouseX = mouseX; pMouseY = mouseY; });
+        window.addEventListener('mousemove', (e) => { obtenerPosicion(e); });
+        window.addEventListener('mouseup', () => { estaTocando = false; });
+
+        // Eventos de Toque (para celulares)
+        window.addEventListener('touchstart', (e) => { estaTocando = true; obtenerPosicion(e); pMouseX = mouseX; pMouseY = mouseY; e.preventDefault(); }, { passive: false });
+        window.addEventListener('touchmove', (e) => { obtenerPosicion(e); e.preventDefault(); }, { passive: false });
+        window.addEventListener('touchend', () => { estaTocando = false; });
+
+        // Iniciar la animación
+        animar();
+
+    </script>
+</body>
+</html>
